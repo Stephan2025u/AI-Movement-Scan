@@ -1,4 +1,3 @@
-```python
 from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, StreamingResponse
 from dotenv import load_dotenv
@@ -673,4 +672,3 @@ logger = logging.getLogger(__name__)
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-```
