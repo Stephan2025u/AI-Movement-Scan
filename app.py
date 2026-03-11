@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import tempfile
 
-# Configurare MediaPipe
+# Inițializare MediaPipe Pose
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
 
@@ -18,12 +18,14 @@ def calculate_angle(a, b, c):
         angle = 360-angle
     return angle
 
-st.title("Isokinetic Movement Scan - AI")
-st.write("Încarcă un video pentru analiza biomecanică a genunchiului.")
+st.set_page_config(page_title="AI Biomechanics Scan", layout="wide")
+st.title("Isokinetic Movement Scan - AI Analysis")
+st.sidebar.title("Setări")
 
-uploaded_file = st.file_input("Alege un video...", type=["mp4", "mov", "avi"])
+uploaded_file = st.sidebar.file_uploader("Încarcă video (MP4, MOV)", type=["mp4", "mov", "avi"])
 
 if uploaded_file is not None:
+    # Salvăm video-ul temporar
     tfile = tempfile.NamedTemporaryFile(delete=False) 
     tfile.write(uploaded_file.read())
     
@@ -36,27 +38,32 @@ if uploaded_file is not None:
             if not ret:
                 break
             
-            # Procesare imagine
+            # Conversie pentru MediaPipe
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = pose.process(image)
             
             if results.pose_landmarks:
                 landmarks = results.pose_landmarks.landmark
                 
-                # Puncte pentru unghi (Hip, Knee, Ankle)
-                hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
-                knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
-                ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
+                # Coordonate Picior Stâng (Punctele 23, 25, 27 în MediaPipe)
+                hip = [landmarks[23].x, landmarks[23].y]
+                knee = [landmarks[25].x, landmarks[25].y]
+                ankle = [landmarks[27].x, landmarks[27].y]
                 
                 angle = calculate_angle(hip, knee, ankle)
                 
-                # Afisare unghi pe video
-                cv2.putText(image, f"Valg: {int(angle)} deg", 
-                           tuple(np.multiply(knee, [image.shape[1], image.shape[0]]).astype(int)), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-                
+                # Desenăm scheletul
                 mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+                
+                # Afișăm unghiul lângă genunchi
+                h, w, _ = image.shape
+                pos = (int(knee[0] * w), int(knee[1] * h))
+                cv2.putText(image, f"{int(angle)} deg", pos, 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 3)
 
-            st_frame.image(image)
+            st_frame.image(image, channels="RGB", use_container_width=True)
             
     cap.release()
+    st.success("Analiză finalizată!")
+else:
+    st.info("Te rog încarcă un video din meniul lateral pentru a începe analiza.")
