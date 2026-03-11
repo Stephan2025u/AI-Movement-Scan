@@ -1,69 +1,65 @@
 import streamlit as st
-import mediapipe as mp
 import cv2
+import mediapipe as mp
 import numpy as np
 import tempfile
 
-# Inițializare MediaPipe Pose
-mp_pose = mp.solutions.pose
-mp_drawing = mp.solutions.drawing_utils
+# Verificăm dacă mediapipe poate fi inițializat
+try:
+    mp_pose = mp.solutions.pose
+    mp_drawing = mp.solutions.drawing_utils
+except Exception as e:
+    st.error(f"Eroare la inițializarea AI: {e}")
 
-def calculate_angle(a, b, c):
-    a = np.array(a)
-    b = np.array(b)
-    c = np.array(c)
-    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
-    angle = np.abs(radians*180.0/np.pi)
-    if angle > 180.0:
-        angle = 360-angle
-    return angle
+st.set_page_config(page_title="Kineto AI Scan", layout="centered")
+st.title("Biomecanică AI: Analiză Valg Genunchi")
 
-st.set_page_config(page_title="AI Biomechanics Scan", layout="wide")
-st.title("Isokinetic Movement Scan - AI Analysis")
-st.sidebar.title("Setări")
+st.markdown("""
+Acest tool analizează unghiul genunchiului în timpul săriturii (Drop Jump) pentru a identifica riscul de accidentare LIA.
+""")
 
-uploaded_file = st.sidebar.file_uploader("Încarcă video (MP4, MOV)", type=["mp4", "mov", "avi"])
+uploaded_file = st.file_uploader("Încarcă video", type=["mp4", "mov"])
 
-if uploaded_file is not None:
-    # Salvăm video-ul temporar
+if uploaded_file:
     tfile = tempfile.NamedTemporaryFile(delete=False) 
     tfile.write(uploaded_file.read())
     
     cap = cv2.VideoCapture(tfile.name)
-    st_frame = st.empty()
+    frame_placeholder = st.empty()
 
     with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
         while cap.isOpened():
             ret, frame = cap.read()
-            if not ret:
-                break
+            if not ret: break
             
-            # Conversie pentru MediaPipe
-            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = pose.process(image)
+            # Procesare minimă pentru viteză și stabilitate
+            frame = cv2.resize(frame, (640, 480))
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = pose.process(rgb_frame)
             
             if results.pose_landmarks:
-                landmarks = results.pose_landmarks.landmark
+                # Desenăm scheletul simplificat
+                mp_drawing.draw_landmarks(rgb_frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
                 
-                # Coordonate Picior Stâng (Punctele 23, 25, 27 în MediaPipe)
-                hip = [landmarks[23].x, landmarks[23].y]
-                knee = [landmarks[25].x, landmarks[25].y]
-                ankle = [landmarks[27].x, landmarks[27].y]
-                
-                angle = calculate_angle(hip, knee, ankle)
-                
-                # Desenăm scheletul
-                mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
-                
-                # Afișăm unghiul lângă genunchi
-                h, w, _ = image.shape
-                pos = (int(knee[0] * w), int(knee[1] * h))
-                cv2.putText(image, f"{int(angle)} deg", pos, 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 3)
+                # Calcul unghi (Exemplu pentru piciorul stâng)
+                try:
+                    lm = results.pose_landmarks.landmark
+                    # Puncte: Hip(23), Knee(25), Ankle(27)
+                    h = [lm[23].x, lm[23].y]
+                    k = [lm[25].x, lm[25].y]
+                    a = [lm[27].x, lm[27].y]
+                    
+                    # Logică simplă de calcul unghi
+                    ba = np.array(h) - np.array(k)
+                    bc = np.array(a) - np.array(k)
+                    cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+                    angle = np.degrees(np.arccos(cosine_angle))
+                    
+                    cv2.putText(rgb_frame, f"Unghi: {int(angle)} deg", (50, 50), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                except:
+                    pass
 
-            st_frame.image(image, channels="RGB", use_container_width=True)
-            
+            frame_placeholder.image(rgb_frame, channels="RGB")
+    
     cap.release()
-    st.success("Analiză finalizată!")
-else:
-    st.info("Te rog încarcă un video din meniul lateral pentru a începe analiza.")
